@@ -60,8 +60,6 @@ def sync_challenge(challenge, ignore=[]):
     installed_challenges = load_installed_challenges()
     for c in installed_challenges:
         if c["name"] == challenge["name"]:
-            if "category" in ignore:
-                data["category"] = c["category"]
             challenge_id = c["id"]
             break
     else:
@@ -211,6 +209,14 @@ def sync_challenge(challenge, ignore=[]):
         r = s.patch(f"/api/v1/challenges/{challenge_id}", json=data)
         r.raise_for_status()
 
+    # update  docker_image if docker type challenge
+    if challenge.get("type") == "docker":
+        data["docker_image"] = challenge["docker_image"]
+        data["conn_type"] = challenge["deployment"]["conn_type"]
+
+        r = s.patch(f"/api/v1/challenges/{challenge_id}", json=data)
+        r.raise_for_status()
+
 
 def create_challenge(challenge, ignore=[]):
     data = {
@@ -329,6 +335,15 @@ def create_challenge(challenge, ignore=[]):
         if challenge["state"] in ["hidden", "visible"]:
             data["state"] = challenge["state"]
 
+        r = s.patch(f"/api/v1/challenges/{challenge_id}", json=data)
+        r.raise_for_status()
+
+    # set the docker_image and conn_type if it's an isolated challenge
+    if challenge.get('type') == 'docker':
+        data = {
+                "docker_image": challenge["docker_image"],
+                "conn_type": challenge["deployment"]["conn_type"]
+            }
         r = s.patch(f"/api/v1/challenges/{challenge_id}", json=data)
         r.raise_for_status()
 
