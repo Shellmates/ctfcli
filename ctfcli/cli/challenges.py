@@ -22,10 +22,10 @@ from ctfcli.utils.config import (
     get_project_path,
     load_config,
 )
-from ctfcli.utils.deploy import DEPLOY_HANDLERS
+from ctfcli.utils.git import get_git_repo_head_branch
 from ctfcli.utils.spec import CHALLENGE_SPEC_DOCS, blank_challenge_spec
 from ctfcli.utils.templates import get_template_dir
-from ctfcli.utils.git import get_git_repo_head_branch
+from ctfcli.utils.deploy import DEPLOY_HANDLERS
 
 
 class Challenge(object):
@@ -173,7 +173,7 @@ class Challenge(object):
             else:  # If we don't break because of duplicated challenge names
                 click.secho(f'Installing {challenge["name"]}', fg="yellow")
                 create_challenge(challenge=challenge, ignore=ignore)
-                click.secho(f"Success!", fg="green")
+                click.secho("Success!", fg="green")
 
     def sync(self, challenge=None, ignore=()):
         if challenge is None:
@@ -209,7 +209,7 @@ class Challenge(object):
 
             click.secho(f'Syncing {challenge["name"]}', fg="yellow")
             sync_challenge(challenge=challenge, ignore=ignore)
-            click.secho(f"Success!", fg="green")
+            click.secho("Success!", fg="green")
 
     def update(self, challenge=None):
         config = load_config()
@@ -296,7 +296,7 @@ class Challenge(object):
 
         lint_challenge(path)
 
-    def deploy(self, challenge, host=None):
+    def deploy(self, challenge, host=None, protocol=None):
         if challenge is None:
             challenge = os.getcwd()
 
@@ -307,39 +307,66 @@ class Challenge(object):
 
         challenge = load_challenge(path)
         image = challenge.get("image")
-        target_host = host or challenge.get("host") or input("Target host URI: ")
         if image is None:
             click.secho(
                 "This challenge can't be deployed because it doesn't have an associated image",
                 fg="red",
             )
             return
+
+        target_host = host or challenge.get("host")
         if bool(target_host) is False:
+            # If we do not have a host we should set to cloud
             click.secho(
-                "This challenge can't be deployed because there is no target host to deploy to",
-                fg="red",
+                "No host specified, defaulting to cloud deployment", fg="yellow",
             )
-            return
-        url = urlparse(target_host)
+            scheme = "cloud"
+        else:
+            url = urlparse(target_host)
+            if bool(url.netloc) is False:
+                click.secho(
+                    "Provided host has no URI scheme. Provide a URI scheme like ssh:// or registry://",
+                    fg="red",
+                )
+                return
+            scheme = url.scheme
 
-        if bool(url.netloc) is False:
-            click.secho(
-                "Provided host has no URI scheme. Provide a URI scheme like ssh:// or registry://",
-                fg="red",
-            )
-            return
+        protocol = protocol or challenge.get("protocol")
 
-        status, domain, port = DEPLOY_HANDLERS[url.scheme](
-            challenge=challenge, host=target_host
+        status, domain, port, connect_info = DEPLOY_HANDLERS[scheme](
+            challenge=challenge, host=target_host, protocol=protocol,
         )
 
+        challenge["connection_info"] = connect_info
+
         if status:
+            # Search for challenge
+            installed_challenges = load_installed_challenges()
+            for c in installed_challenges:
+                # Sync challenge if it already exists
+                if c["name"] == challenge["name"]:
+                    sync_challenge(
+                        challenge,
+                        ignore=[
+                            "flags",
+                            "topics",
+                            "tags",
+                            "files",
+                            "hints",
+                            "requirements",
+                        ],
+                    )
+                    break
+            else:
+                # Install challenge
+                create_challenge(challenge=challenge)
+
             click.secho(
-                f"Challenge deployed at {domain}:{port}", fg="green",
+                f"Challenge deployed at {challenge['connection_info']}", fg="green",
             )
         else:
             click.secho(
-                f"An error occured during deployment", fg="red",
+                "An error occured during deployment", fg="red",
             )
 
     def push(self, challenge=None):
@@ -364,7 +391,7 @@ class Challenge(object):
 
     def healthcheck(self, challenge):
         config = load_config()
-        challenges = config["challenges"]
+        _challenges = config["challenges"]
 
         # challenge_path = challenges[challenge]
         path = Path(challenge)
@@ -406,11 +433,11 @@ class Challenge(object):
 
         if rcode != 0:
             click.secho(
-                f"Healcheck failed", fg="red",
+                "Healcheck failed", fg="red",
             )
             sys.exit(1)
         else:
             click.secho(
-                f"Success", fg="green",
+                "Success", fg="green",
             )
             sys.exit(0)
