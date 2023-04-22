@@ -213,6 +213,7 @@ def sync_challenge(challenge, ignore=[]):
     if challenge.get("type") == "docker":
         data["docker_image"] = challenge["docker_image"]
         data["conn_type"] = challenge["deployment"]["conn_type"]
+        data["dynamic_score"] = challenge["dynamic_score"]
 
         r = s.patch(f"/api/v1/challenges/{challenge_id}", json=data)
         r.raise_for_status()
@@ -342,8 +343,10 @@ def create_challenge(challenge, ignore=[]):
     if challenge.get('type') == 'docker':
         data = {
                 "docker_image": challenge["docker_image"],
-                "conn_type": challenge["deployment"]["conn_type"]
+                "conn_type": challenge["deployment"]["conn_type"],
+                "dynamic_score": challenge["dynamic_score"]
             }
+        print(data)
         r = s.patch(f"/api/v1/challenges/{challenge_id}", json=data)
         r.raise_for_status()
 
